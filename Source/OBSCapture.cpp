@@ -51,10 +51,11 @@ void LogSystemStats();
 
 void OBS::ToggleRecording()
 {
-    if (bRecordingOnly)
-        ToggleCapturing();
-    else if(!bRecording)
+    if (!bRecording)
+    {
+        if (!bRunning && !bStreaming) Start(true);
         StartRecording();
+    }
     else
         StopRecording();
 }
@@ -69,7 +70,7 @@ void OBS::ToggleCapturing()
 
 void OBS::StartRecording()
 {
-    if(bRecording) return;
+    if (bRecording) return;
     int networkMode = AppConfig->GetInt(TEXT("Publish"), TEXT("Mode"), 2);
 
     bWriteToFile = networkMode == 1 || AppConfig->GetInt(TEXT("Publish"), TEXT("SaveToFile")) != 0;
@@ -151,10 +152,10 @@ void OBS::StartRecording()
             bRecording = false;
         }
         else {
-            EnableWindow(GetDlgItem(hwndMain, ID_TOGGLERECORDING), TRUE);
-            SetWindowText(GetDlgItem(hwndMain, ID_TOGGLERECORDING), Str("MainWindow.StopRecording"));
             bRecording = true;
+            ReportStartRecordingTrigger();
         }
+        ConfigureStreamButtons();
     }
 }
 
@@ -172,38 +173,48 @@ void OBS::StopRecording()
     tempStream = NULL;
     bRecording = false;
 
+    ReportStopRecordingTrigger();
+
     SetWindowText(GetDlgItem(hwndMain, ID_TOGGLERECORDING), Str("MainWindow.StartRecording"));
 
     if(!bStreaming) Stop();
 }
 
-void OBS::Start()
+void OBS::Start(bool recordingOnly)
 {
     if(bRunning && !bRecording) return;
 
     int networkMode = AppConfig->GetInt(TEXT("Publish"), TEXT("Mode"), 2);
     DWORD delayTime = (DWORD)AppConfig->GetInt(TEXT("Publish"), TEXT("Delay"));
 
-    if(bRecording && bKeepRecording && networkMode == 0 && delayTime == 0) {
+    if (bRecording && networkMode != 0) return;
+
+    if(bRecording && networkMode == 0 && delayTime == 0 && !recordingOnly) {
         bFirstConnect = !bReconnecting;
 
-        network = NULL;
+        if (network)
+        {
+            NetworkStream *net = network;
+            network = nullptr;
+            delete net;
+        }
         network = CreateRTMPPublisher();
 
         Log(TEXT("=====Stream Start (while recording): %s============================="), CurrentDateTimeString().Array());
 
-        EnableWindow(GetDlgItem(hwndMain, ID_STARTSTOP), TRUE);
-        SetWindowText(GetDlgItem(hwndMain, ID_STARTSTOP), Str("MainWindow.StopStream"));
-
         bSentHeaders = false;
         bStreaming = true;
 
+        ReportStartStreamingTrigger();
+        ConfigureStreamButtons();
         return;
     }
 
     bStartingUp = true;
 
-    OSEnterMutex (hStartupShutdownMutex);
+    OSEnterMutex(hStartupShutdownMutex);
+
+    EnableProfileMenu(false);
 
     scenesConfig.Save();
 
@@ -231,6 +242,7 @@ retryHookTest:
         int ret = MessageBox(hwndMain, Str("IncompatibleModules"), NULL, MB_ICONERROR | MB_ABORTRETRYIGNORE);
         if (ret == IDABORT)
         {
+            EnableProfileMenu(true);
             OSLeaveMutex (hStartupShutdownMutex);
             bStartingUp = false;
             return;
@@ -246,6 +258,7 @@ retryHookTest:
     String strPatchesError;
     if (OSIncompatiblePatchesLoaded(strPatchesError))
     {
+        EnableProfileMenu(true);
         OSLeaveMutex (hStartupShutdownMutex);
         MessageBox(hwndMain, strPatchesError.Array(), NULL, MB_ICONERROR);
         Log(TEXT("Incompatible patches detected."));
@@ -270,7 +283,7 @@ retryHookTest:
 
     bFirstConnect = !bReconnecting;
 
-    if(bTestStream)
+    if(bTestStream || recordingOnly)
         network = CreateNullNetwork();
     else
     {
@@ -283,6 +296,7 @@ retryHookTest:
 
     if(!network)
     {
+        EnableProfileMenu(true);
         OSLeaveMutex (hStartupShutdownMutex);
 
         if(!bReconnecting)
@@ -358,6 +372,7 @@ retryHookTestV2:
                 delete network;
                 delete GS;
 
+                EnableProfileMenu(true);
                 OSLeaveMutex (hStartupShutdownMutex);
                 bStartingUp = false;
                 return;
@@ -646,7 +661,7 @@ retryHookTestV2:
         return;
     }
 
-    bStreaming = true;
+    if ((bStreaming = !recordingOnly)) ReportStartStreamingTrigger();
     //-------------------------------------------------------------
 
     // Ensure that the render frame is properly sized
@@ -665,18 +680,6 @@ retryHookTestV2:
     hEncodeThread = OSCreateThread((XTHREAD)OBS::EncodeThread, NULL);
     hVideoThread = OSCreateThread((XTHREAD)OBS::MainCaptureThread, NULL);
 
-    if(bTestStream)
-    {
-        EnableWindow(GetDlgItem(hwndMain, ID_STARTSTOP), FALSE);
-        EnableWindow(GetDlgItem(hwndMain, ID_TOGGLERECORDING), FALSE);
-        SetWindowText(GetDlgItem(hwndMain, ID_TESTSTREAM), Str("MainWindow.StopTest"));
-    }
-    else
-    {
-        EnableWindow(GetDlgItem(hwndMain, ID_TESTSTREAM), FALSE);
-        SetWindowText(GetDlgItem(hwndMain, ID_STARTSTOP), Str("MainWindow.StopStream"));
-    }
-
     EnableWindow(GetDlgItem(hwndMain, ID_SCENEEDITOR), TRUE);
 
     //-------------------------------------------------------------
@@ -694,11 +697,17 @@ retryHookTestV2:
     OSLeaveMutex (hStartupShutdownMutex);
 
     bStartingUp = false;
+
+    ConfigureStreamButtons();
 }
 
 void OBS::Stop(bool overrideKeepRecording)
 {
     if((!bStreaming && !bRecording && !bRunning) && (!bTestStream)) return;
+
+    //ugly hack to prevent hotkeys from being processed while we're stopping otherwise we end up
+    //with callbacks from the ProcessEvents call in DelayedPublisher which causes havoc.
+    OSEnterMutex(hHotkeyMutex);
 
     int networkMode = AppConfig->GetInt(TEXT("Publish"), TEXT("Mode"), 2);
 
@@ -713,11 +722,14 @@ void OBS::Stop(bool overrideKeepRecording)
 
         delete tempStream;
 
-        EnableWindow(GetDlgItem(hwndMain, ID_STARTSTOP), TRUE);
-        SetWindowText(GetDlgItem(hwndMain, ID_STARTSTOP), Str("MainWindow.StartStream"));
-
         bStreaming = false;
         bSentHeaders = false;
+
+        ReportStopStreamingTrigger();
+
+        ConfigureStreamButtons();
+
+        OSLeaveMutex(hHotkeyMutex);
 
         return;
     }
@@ -778,6 +790,7 @@ void OBS::Stop(bool overrideKeepRecording)
 
     delete network;
     network = NULL;
+    if (bStreaming) ReportStopStreamingTrigger();
     bStreaming = false;
     
     if(bRecording) StopRecording();
@@ -891,24 +904,6 @@ void OBS::Stop(bool overrideKeepRecording)
     //update notification icon to reflect current status
     UpdateNotificationAreaIcon();
 
-    if (bRecordingOnly)
-    {
-        EnableWindow(GetDlgItem(hwndMain, ID_TOGGLERECORDING), TRUE);
-        EnableWindow(GetDlgItem(hwndMain, ID_STARTSTOP), FALSE);
-        EnableWindow(GetDlgItem(hwndMain, ID_TESTSTREAM), TRUE);
-    }
-    else
-    {
-        EnableWindow(GetDlgItem(hwndMain, ID_TOGGLERECORDING), FALSE);
-        EnableWindow(GetDlgItem(hwndMain, ID_STARTSTOP), TRUE);
-        EnableWindow(GetDlgItem(hwndMain, ID_TESTSTREAM), TRUE);
-    }
-
-    SetWindowText(GetDlgItem(hwndMain, ID_TOGGLERECORDING), Str("MainWindow.StartRecording"));
-    SetWindowText(GetDlgItem(hwndMain, ID_TESTSTREAM), Str("MainWindow.TestStream"));
-    SetWindowText(GetDlgItem(hwndMain, ID_STARTSTOP), Str("MainWindow.StartStream"));
-
-
     bEditMode = false;
     SendMessage(GetDlgItem(hwndMain, ID_SCENEEDITOR), BM_SETCHECK, BST_UNCHECKED, 0);
     EnableWindow(GetDlgItem(hwndMain, ID_SCENEEDITOR), FALSE);
@@ -929,7 +924,11 @@ void OBS::Stop(bool overrideKeepRecording)
 
     UpdateRenderViewMessage();
 
+    EnableProfileMenu(true);
+
     OSLeaveMutex(hStartupShutdownMutex);
+
+    OSLeaveMutex(hHotkeyMutex);
 }
 
 DWORD STDCALL OBS::MainAudioThread(LPVOID lpUnused)

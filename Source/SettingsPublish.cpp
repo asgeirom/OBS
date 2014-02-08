@@ -163,6 +163,34 @@ void SettingsPublish::ApplySettings()
 
     //------------------------------------------
 
+    DWORD stopRecordingHotkey = (DWORD)SendMessage(GetDlgItem(hwnd, IDC_STOPRECORDINGHOTKEY), HKM_GETHOTKEY, 0, 0);
+    AppConfig->SetInt(TEXT("Publish"), TEXT("StopRecordingHotkey"), stopRecordingHotkey);
+
+    if (App->stopRecordingHotkeyID)
+    {
+        API->DeleteHotkey(App->stopRecordingHotkeyID);
+        App->stopRecordingHotkeyID = 0;
+    }
+
+    if (stopRecordingHotkey)
+        App->stopRecordingHotkeyID = API->CreateHotkey(stopRecordingHotkey, OBS::StopRecordingHotkey, NULL);
+
+    //------------------------------------------
+
+    DWORD startRecordingHotkey = (DWORD)SendMessage(GetDlgItem(hwnd, IDC_STARTRECORDINGHOTKEY), HKM_GETHOTKEY, 0, 0);
+    AppConfig->SetInt(TEXT("Publish"), TEXT("StartRecordingHotkey"), startRecordingHotkey);
+
+    if (App->startRecordingHotkeyID)
+    {
+        API->DeleteHotkey(App->startRecordingHotkeyID);
+        App->startRecordingHotkeyID = 0;
+    }
+
+    if (startRecordingHotkey)
+        App->startRecordingHotkeyID = API->CreateHotkey(startRecordingHotkey, OBS::StartRecordingHotkey, NULL);
+
+    //------------------------------------------
+
     App->ConfigureStreamButtons();
 
     /*
@@ -476,6 +504,12 @@ INT_PTR SettingsPublish::ProcMessage(UINT message, WPARAM wParam, LPARAM lParam)
                     AdjustWindowPos(GetDlgItem(hwnd, IDC_STARTSTREAMHOTKEY_STATIC), 0, -data->fileControlOffset);
                     AdjustWindowPos(GetDlgItem(hwnd, IDC_STARTSTREAMHOTKEY), 0, -data->fileControlOffset);
                     AdjustWindowPos(GetDlgItem(hwnd, IDC_CLEARHOTKEY_STARTSTREAM), 0, -data->fileControlOffset);
+                    AdjustWindowPos(GetDlgItem(hwnd, IDC_STARTRECORDINGHOTKEY_STATIC), 0, -data->fileControlOffset);
+                    AdjustWindowPos(GetDlgItem(hwnd, IDC_STOPRECORDINGHOTKEY_STATIC), 0, -data->fileControlOffset);
+                    AdjustWindowPos(GetDlgItem(hwnd, IDC_STARTRECORDINGHOTKEY), 0, -data->fileControlOffset);
+                    AdjustWindowPos(GetDlgItem(hwnd, IDC_STOPRECORDINGHOTKEY), 0, -data->fileControlOffset);
+                    AdjustWindowPos(GetDlgItem(hwnd, IDC_CLEARHOTKEY_STARTRECORDING), 0, -data->fileControlOffset);
+                    AdjustWindowPos(GetDlgItem(hwnd, IDC_CLEARHOTKEY_STOPRECORDING), 0, -data->fileControlOffset);
                 }
 
                 //--------------------------------------------
@@ -490,6 +524,16 @@ INT_PTR SettingsPublish::ProcMessage(UINT message, WPARAM wParam, LPARAM lParam)
 
                 //--------------------------------------------
 
+                startHotkey = AppConfig->GetInt(TEXT("Publish"), TEXT("StartRecordingHotkey"));
+                SendMessage(GetDlgItem(hwnd, IDC_STARTRECORDINGHOTKEY), HKM_SETHOTKEY, startHotkey, 0);
+
+                //--------------------------------------------
+
+                stopHotkey = AppConfig->GetInt(TEXT("Publish"), TEXT("StopRecordingHotkey"));
+                SendMessage(GetDlgItem(hwnd, IDC_STOPRECORDINGHOTKEY), HKM_SETHOTKEY, stopHotkey, 0);
+
+                //--------------------------------------------
+
                 BOOL bKeepRecording = AppConfig->GetInt(TEXT("Publish"), TEXT("KeepRecording"));
                 SendMessage(GetDlgItem(hwnd, IDC_KEEPRECORDING), BM_SETCHECK, bKeepRecording ? BST_CHECKED : BST_UNCHECKED, 0);
 
@@ -498,6 +542,8 @@ INT_PTR SettingsPublish::ProcMessage(UINT message, WPARAM wParam, LPARAM lParam)
 
                 CTSTR lpSavePath = AppConfig->GetStringPtr(TEXT("Publish"), TEXT("SavePath"));
                 SetWindowText(GetDlgItem(hwnd, IDC_SAVEPATH), lpSavePath);
+
+                EnableWindow(GetDlgItem(hwnd, IDC_KEEPRECORDING), bSaveToFile || (mode != 0));
 
                 EnableWindow(GetDlgItem(hwnd, IDC_SAVEPATH), bSaveToFile || (mode != 0));
                 EnableWindow(GetDlgItem(hwnd, IDC_BROWSE),   bSaveToFile || (mode != 0));
@@ -578,6 +624,7 @@ INT_PTR SettingsPublish::ProcMessage(UINT message, WPARAM wParam, LPARAM lParam)
                             }
 
                             BOOL bSaveToFile = SendMessage(GetDlgItem(hwnd, IDC_SAVETOFILE), BM_GETCHECK, 0, 0) != BST_UNCHECKED;
+                            EnableWindow(GetDlgItem(hwnd, IDC_KEEPRECORDING), bSaveToFile || (mode != 0));
                             EnableWindow(GetDlgItem(hwnd, IDC_SAVEPATH), bSaveToFile || (mode != 0));
                             EnableWindow(GetDlgItem(hwnd, IDC_BROWSE),   bSaveToFile || (mode != 0));
 
@@ -592,6 +639,13 @@ INT_PTR SettingsPublish::ProcMessage(UINT message, WPARAM wParam, LPARAM lParam)
                                 AdjustWindowPos(GetDlgItem(hwnd, IDC_STARTSTREAMHOTKEY_STATIC), 0, data->fileControlOffset);
                                 AdjustWindowPos(GetDlgItem(hwnd, IDC_STARTSTREAMHOTKEY), 0, data->fileControlOffset);
                                 AdjustWindowPos(GetDlgItem(hwnd, IDC_CLEARHOTKEY_STARTSTREAM), 0, data->fileControlOffset);
+                                AdjustWindowPos(GetDlgItem(hwnd, IDC_STARTRECORDINGHOTKEY_STATIC), 0, data->fileControlOffset);
+                                AdjustWindowPos(GetDlgItem(hwnd, IDC_STOPRECORDINGHOTKEY_STATIC), 0, data->fileControlOffset);
+                                AdjustWindowPos(GetDlgItem(hwnd, IDC_STARTRECORDINGHOTKEY), 0, data->fileControlOffset);
+                                AdjustWindowPos(GetDlgItem(hwnd, IDC_STOPRECORDINGHOTKEY), 0, data->fileControlOffset);
+                                AdjustWindowPos(GetDlgItem(hwnd, IDC_CLEARHOTKEY_STARTRECORDING), 0, data->fileControlOffset);
+                                AdjustWindowPos(GetDlgItem(hwnd, IDC_CLEARHOTKEY_STOPRECORDING), 0, data->fileControlOffset);
+
                             }
                             else if(mode == 1 && data->mode == 0)
                             {
@@ -604,6 +658,12 @@ INT_PTR SettingsPublish::ProcMessage(UINT message, WPARAM wParam, LPARAM lParam)
                                 AdjustWindowPos(GetDlgItem(hwnd, IDC_STARTSTREAMHOTKEY_STATIC), 0, -data->fileControlOffset);
                                 AdjustWindowPos(GetDlgItem(hwnd, IDC_STARTSTREAMHOTKEY), 0, -data->fileControlOffset);
                                 AdjustWindowPos(GetDlgItem(hwnd, IDC_CLEARHOTKEY_STARTSTREAM), 0, -data->fileControlOffset);
+                                AdjustWindowPos(GetDlgItem(hwnd, IDC_STARTRECORDINGHOTKEY_STATIC), 0, -data->fileControlOffset);
+                                AdjustWindowPos(GetDlgItem(hwnd, IDC_STOPRECORDINGHOTKEY_STATIC), 0, -data->fileControlOffset);
+                                AdjustWindowPos(GetDlgItem(hwnd, IDC_STARTRECORDINGHOTKEY), 0, -data->fileControlOffset);
+                                AdjustWindowPos(GetDlgItem(hwnd, IDC_STOPRECORDINGHOTKEY), 0, -data->fileControlOffset);
+                                AdjustWindowPos(GetDlgItem(hwnd, IDC_CLEARHOTKEY_STARTRECORDING), 0, -data->fileControlOffset);
+                                AdjustWindowPos(GetDlgItem(hwnd, IDC_CLEARHOTKEY_STOPRECORDING), 0, -data->fileControlOffset);
                             }
 
                             data->mode = mode;
@@ -714,6 +774,8 @@ INT_PTR SettingsPublish::ProcMessage(UINT message, WPARAM wParam, LPARAM lParam)
                         {
                             BOOL bSaveToFile = SendMessage((HWND)lParam, BM_GETCHECK, 0, 0) == BST_CHECKED;
 
+                            EnableWindow(GetDlgItem(hwnd, IDC_KEEPRECORDING), bSaveToFile);
+
                             EnableWindow(GetDlgItem(hwnd, IDC_SAVEPATH), bSaveToFile);
                             EnableWindow(GetDlgItem(hwnd, IDC_BROWSE),   bSaveToFile);
 
@@ -793,6 +855,8 @@ INT_PTR SettingsPublish::ProcMessage(UINT message, WPARAM wParam, LPARAM lParam)
                     case IDC_STARTSTREAMHOTKEY:
                     case IDC_STOPSTREAMHOTKEY:
                     //case IDC_DASHBOARDLINK:
+                    case IDC_STARTRECORDINGHOTKEY:
+                    case IDC_STOPRECORDINGHOTKEY:
                         if(HIWORD(wParam) == EN_CHANGE)
                             SetChangedSettings(true);
                         break;
@@ -821,6 +885,28 @@ INT_PTR SettingsPublish::ProcMessage(UINT message, WPARAM wParam, LPARAM lParam)
                             if(SendMessage(GetDlgItem(hwnd, IDC_STOPSTREAMHOTKEY), HKM_GETHOTKEY, 0, 0))
                             {
                                 SendMessage(GetDlgItem(hwnd, IDC_STOPSTREAMHOTKEY), HKM_SETHOTKEY, 0, 0);
+                                SetChangedSettings(true);
+                            }
+                        }
+                        break;
+
+                    case IDC_CLEARHOTKEY_STARTRECORDING:
+                        if (HIWORD(wParam) == BN_CLICKED)
+                        {
+                            if (SendMessage(GetDlgItem(hwnd, IDC_STOPRECORDINGHOTKEY), HKM_GETHOTKEY, 0, 0))
+                            {
+                                SendMessage(GetDlgItem(hwnd, IDC_STOPRECORDINGHOTKEY), HKM_SETHOTKEY, 0, 0);
+                                SetChangedSettings(true);
+                            }
+                        }
+                        break;
+
+                    case IDC_CLEARHOTKEY_STOPRECORDING:
+                        if (HIWORD(wParam) == BN_CLICKED)
+                        {
+                            if (SendMessage(GetDlgItem(hwnd, IDC_STOPRECORDINGHOTKEY), HKM_GETHOTKEY, 0, 0))
+                            {
+                                SendMessage(GetDlgItem(hwnd, IDC_STOPRECORDINGHOTKEY), HKM_SETHOTKEY, 0, 0);
                                 SetChangedSettings(true);
                             }
                         }

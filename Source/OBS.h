@@ -296,11 +296,23 @@ struct PluginInfo
 
     /* Event Callbacks */
 
-    /* called on stream starting */
+    /* called on stream starting (as soon as the encoder starts, for any combination of file/rtmp output) */
     OBS_CALLBACK startStreamCallback;
     
-    /* called on stream stopping */
+    /* called on stream stopping (as soon as the encoder stops) */
     OBS_CALLBACK stopStreamCallback;
+
+    /* called when streaming (via rtmp) starts */
+    OBS_CALLBACK startStreamingCallback;
+
+    /* called when streaming (via rtmp) stops */
+    OBS_CALLBACK stopStreamingCallback;
+
+    /* called when recording (to file) starts */
+    OBS_CALLBACK startRecordingCallback;
+
+    /* called when recording (to file) stops */
+    OBS_CALLBACK stopRecordingCallback;
 
     /* called when status bar is updated, even without network */
     OBS_STATUS_CALLBACK statusCallback;
@@ -635,6 +647,7 @@ private:
     bool    bTestStream;
     bool    bUseMultithreadedOptimizations;
     bool    bRunning, bRecording, bRecordingOnly, bStartingUp, bStreaming, bKeepRecording;
+    bool    canRecord;
     volatile bool bShutdownVideoThread, bShutdownEncodeThread;
     int     renderFrameWidth, renderFrameHeight; // The size of the preview only
     int     renderFrameX, renderFrameY; // The offset of the preview inside the preview control
@@ -786,8 +799,11 @@ private:
     UINT muteDesktopHotkeyID;
     UINT startStreamHotkeyID;
     UINT stopStreamHotkeyID;
+    UINT startRecordingHotkeyID;
+    UINT stopRecordingHotkeyID;
 
     bool bStartStreamHotkeyDown, bStopStreamHotkeyDown;
+    bool bStartRecordingHotkeyDown, bStopRecordingHotkeyDown;
 
     static DWORD STDCALL MainAudioThread(LPVOID lpUnused);
     bool QueryAudioBuffers(bool bQueriedDesktopDebugParam);
@@ -888,13 +904,15 @@ private:
     void ResetItemSizes();
     void ResetItemCrops();
 
-    void Start();
+    void Start(bool recordingOnly=false);
     void Stop(bool overrideKeepRecording=false);
     void StartRecording();
     void StopRecording();
 
     static void STDCALL StartStreamHotkey(DWORD hotkey, UPARAM param, bool bDown);
     static void STDCALL StopStreamHotkey(DWORD hotkey, UPARAM param, bool bDown);
+    static void STDCALL StartRecordingHotkey(DWORD hotkey, UPARAM param, bool bDown);
+    static void STDCALL StopRecordingHotkey(DWORD hotkey, UPARAM param, bool bDown);
 
     static void STDCALL PushToTalkHotkey(DWORD hotkey, UPARAM param, bool bDown);
     static void STDCALL MuteMicHotkey(DWORD hotkey, UPARAM param, bool bDown);
@@ -957,6 +975,7 @@ private:
 
     static void AddProfilesToMenu(HMENU menu);
     static void ResetProfileMenu();
+    static void EnableProfileMenu(bool enable);
 
     static String GetApplicationName();
     static void ResetApplicationName();
@@ -966,6 +985,7 @@ private:
     static void ClearStatusBar();
     static void DrawStatusBar(DRAWITEMSTRUCT &dis);
 
+    void RefreshStreamButtons(bool disable=false);
     void ConfigureStreamButtons();
 
     void ReloadIniSettings();
@@ -1090,7 +1110,11 @@ public:
     // event reporting functions
     virtual void ReportStartStreamTrigger();
     virtual void ReportStopStreamTrigger();
-    virtual void OBS::ReportOBSStatus(bool running, bool streaming, bool recording,
+    virtual void ReportStartStreamingTrigger();
+    virtual void ReportStopStreamingTrigger();
+    virtual void ReportStartRecordingTrigger();
+    virtual void ReportStopRecordingTrigger();
+    virtual void ReportOBSStatus(bool running, bool streaming, bool recording,
                                    bool previewing, bool reconnecting);
     virtual void ReportStreamStatus(bool streaming, bool previewOnly = false, 
                                    UINT bytesPerSec = 0, double strain = 0, 

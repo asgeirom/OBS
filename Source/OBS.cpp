@@ -388,7 +388,7 @@ OBS::OBS()
     // start/stop recording button
 
     hwndTemp = CreateWindow(TEXT("BUTTON"), Str("MainWindow.StartRecording"),
-        WS_CHILDWINDOW|WS_VISIBLE|WS_TABSTOP|BS_TEXT|BS_PUSHBUTTON|WS_DISABLED|WS_CLIPSIBLINGS,
+        WS_CHILDWINDOW|WS_VISIBLE|WS_TABSTOP|BS_TEXT|BS_PUSHBUTTON|WS_CLIPSIBLINGS,
         0, 0, 0, 0, hwndMain, (HMENU)ID_TOGGLERECORDING, 0, 0);
     SendMessage(hwndTemp, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), TRUE);
 
@@ -645,16 +645,20 @@ OBS::OBS()
                         pluginInfo->strFile = ofd.fileName;
 
                         /* get event callbacks for the plugin */
-                        pluginInfo->startStreamCallback  = (OBS_CALLBACK)GetProcAddress(hPlugin, "OnStartStream");
-                        pluginInfo->stopStreamCallback   = (OBS_CALLBACK)GetProcAddress(hPlugin, "OnStopStream");
-                        pluginInfo->statusCallback        = (OBS_STATUS_CALLBACK)GetProcAddress(hPlugin, "OnOBSStatus");
-                        pluginInfo->streamStatusCallback  = (OBS_STREAM_STATUS_CALLBACK)GetProcAddress(hPlugin, "OnStreamStatus");
-                        pluginInfo->sceneSwitchCallback   = (OBS_SCENE_SWITCH_CALLBACK)GetProcAddress(hPlugin, "OnSceneSwitch");
-                        pluginInfo->scenesChangedCallback  = (OBS_CALLBACK)GetProcAddress(hPlugin, "OnScenesChanged");
-                        pluginInfo->sourceOrderChangedCallback   = (OBS_CALLBACK)GetProcAddress(hPlugin, "OnSourceOrderChanged");
-                        pluginInfo->sourceChangedCallback  = (OBS_SOURCE_CHANGED_CALLBACK)GetProcAddress(hPlugin, "OnSourceChanged");
-                        pluginInfo->sourcesAddedOrRemovedCallback   = (OBS_CALLBACK)GetProcAddress(hPlugin, "OnSourcesAddedOrRemoved");
-                        pluginInfo->micVolumeChangeCallback  = (OBS_VOLUME_CHANGED_CALLBACK)GetProcAddress(hPlugin, "OnMicVolumeChanged");
+                        pluginInfo->startStreamCallback           = (OBS_CALLBACK)GetProcAddress(hPlugin, "OnStartStream");
+                        pluginInfo->stopStreamCallback            = (OBS_CALLBACK)GetProcAddress(hPlugin, "OnStopStream");
+                        pluginInfo->startStreamingCallback        = (OBS_CALLBACK)GetProcAddress(hPlugin, "OnStartStreaming");
+                        pluginInfo->stopStreamingCallback         = (OBS_CALLBACK)GetProcAddress(hPlugin, "OnStopStreaming");
+                        pluginInfo->startRecordingCallback        = (OBS_CALLBACK)GetProcAddress(hPlugin, "OnStartRecording");
+                        pluginInfo->stopRecordingCallback         = (OBS_CALLBACK)GetProcAddress(hPlugin, "OnStopRecording");
+                        pluginInfo->statusCallback                = (OBS_STATUS_CALLBACK)GetProcAddress(hPlugin, "OnOBSStatus");
+                        pluginInfo->streamStatusCallback          = (OBS_STREAM_STATUS_CALLBACK)GetProcAddress(hPlugin, "OnStreamStatus");
+                        pluginInfo->sceneSwitchCallback           = (OBS_SCENE_SWITCH_CALLBACK)GetProcAddress(hPlugin, "OnSceneSwitch");
+                        pluginInfo->scenesChangedCallback         = (OBS_CALLBACK)GetProcAddress(hPlugin, "OnScenesChanged");
+                        pluginInfo->sourceOrderChangedCallback    = (OBS_CALLBACK)GetProcAddress(hPlugin, "OnSourceOrderChanged");
+                        pluginInfo->sourceChangedCallback         = (OBS_SOURCE_CHANGED_CALLBACK)GetProcAddress(hPlugin, "OnSourceChanged");
+                        pluginInfo->sourcesAddedOrRemovedCallback = (OBS_CALLBACK)GetProcAddress(hPlugin, "OnSourcesAddedOrRemoved");
+                        pluginInfo->micVolumeChangeCallback       = (OBS_VOLUME_CHANGED_CALLBACK)GetProcAddress(hPlugin, "OnMicVolumeChanged");
                         pluginInfo->desktopVolumeChangeCallback   = (OBS_VOLUME_CHANGED_CALLBACK)GetProcAddress(hPlugin, "OnDesktopVolumeChanged");
 
                         //GETPLUGINNAMEPROC getName = (GETPLUGINNAMEPROC)GetProcAddress(hPlugin, "GetPluginName");
@@ -1204,21 +1208,25 @@ void OBS::GetProfiles(StringList &profileList)
     }
 }
 
-void OBS::ConfigureStreamButtons()
+void OBS::RefreshStreamButtons(bool disable)
 {
     int networkMode = AppConfig->GetInt(TEXT("Publish"), TEXT("Mode"), 2);
     bRecordingOnly = (networkMode == 1);
+    bool canStream = networkMode == 0 && !bTestStream;
+    canRecord = (bRecordingOnly || AppConfig->GetInt(TEXT("Publish"), TEXT("SaveToFile")) != 0) && !bTestStream;
+    bool canTest = !bRecording && (!bStreaming || bTestStream);
 
-    if (bRecordingOnly)
-    {
-        EnableWindow(GetDlgItem(hwndMain, ID_STARTSTOP), FALSE);
-        EnableWindow(GetDlgItem(hwndMain, ID_TOGGLERECORDING), TRUE);
-    }
-    else
-    {
-        EnableWindow(GetDlgItem(hwndMain, ID_STARTSTOP), TRUE);
-        EnableWindow(GetDlgItem(hwndMain, ID_TOGGLERECORDING), FALSE);
-    }
+    EnableWindow(GetDlgItem(hwndMain, ID_STARTSTOP), !disable && canStream);
+    EnableWindow(GetDlgItem(hwndMain, ID_TOGGLERECORDING), !disable && canRecord);
+    EnableWindow(GetDlgItem(hwndMain, ID_TESTSTREAM), !disable && canTest);
+}
+
+void OBS::ConfigureStreamButtons()
+{
+    RefreshStreamButtons();
+    SetWindowText(GetDlgItem(hwndMain, ID_STARTSTOP), bStreaming ? Str("MainWindow.StopStream") : Str("MainWindow.StartStream"));
+    SetWindowText(GetDlgItem(hwndMain, ID_TOGGLERECORDING), bRecording ? Str("MainWindow.StopRecording") : Str("MainWindow.StartRecording"));
+    SetWindowText(GetDlgItem(hwndMain, ID_TESTSTREAM), bTestStream ? Str("MainWindow.StopTest") : Str("MainWindow.TestStream"));
 }
 
 void OBS::ReloadIniSettings()
@@ -1288,6 +1296,8 @@ void OBS::ReloadIniSettings()
     QuickClearHotkey(muteDesktopHotkeyID);
     QuickClearHotkey(stopStreamHotkeyID);
     QuickClearHotkey(startStreamHotkeyID);
+    QuickClearHotkey(stopRecordingHotkeyID);
+    QuickClearHotkey(startRecordingHotkeyID);
 
     bUsingPushToTalk = AppConfig->GetInt(TEXT("Audio"), TEXT("UsePushToTalk")) != 0;
     DWORD hotkey = AppConfig->GetInt(TEXT("Audio"), TEXT("PushToTalkHotkey"));
@@ -1308,12 +1318,20 @@ void OBS::ReloadIniSettings()
         muteDesktopHotkeyID = API->CreateHotkey(hotkey, OBS::MuteDesktopHotkey, NULL);
 
     hotkey = AppConfig->GetInt(TEXT("Publish"), TEXT("StopStreamHotkey"));
-    if(hotkey)
+    if (hotkey)
         stopStreamHotkeyID = API->CreateHotkey(hotkey, OBS::StopStreamHotkey, NULL);
 
     hotkey = AppConfig->GetInt(TEXT("Publish"), TEXT("StartStreamHotkey"));
-    if(hotkey)
+    if (hotkey)
         startStreamHotkeyID = API->CreateHotkey(hotkey, OBS::StartStreamHotkey, NULL);
+
+    hotkey = AppConfig->GetInt(TEXT("Publish"), TEXT("StopRecordingHotkey"));
+    if (hotkey)
+        stopRecordingHotkeyID = API->CreateHotkey(hotkey, OBS::StopRecordingHotkey, NULL);
+
+    hotkey = AppConfig->GetInt(TEXT("Publish"), TEXT("StartRecordingHotkey"));
+    if (hotkey)
+        startRecordingHotkeyID = API->CreateHotkey(hotkey, OBS::StartRecordingHotkey, NULL);
 
     //-------------------------------------------
     // Notification Area icon
@@ -1333,8 +1351,7 @@ void OBS::ReloadIniSettings()
     if (!minimizeToIcon && !IsWindowVisible(hwndMain))
         ShowWindow(hwndMain, SW_SHOW);
 
-    if (!bRunning)
-        ConfigureStreamButtons();
+    RefreshStreamButtons();
 }
 
 void OBS::UpdateAudioMeters()

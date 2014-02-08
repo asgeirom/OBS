@@ -2279,6 +2279,13 @@ void OBS::ResetProfileMenu()
     AddProfilesToMenu(hmenuProfiles);
 }
 
+void OBS::EnableProfileMenu(bool enable)
+{
+    HMENU hmenuMain = GetMenu(hwndMain);
+    EnableMenuItem(hmenuMain, 2, (enable ? MF_ENABLED : MF_DISABLED)|MF_BYPOSITION);
+    DrawMenuBar(hwndMain);
+}
+
 //----------------------------
 
 String OBS::GetApplicationName()
@@ -2318,7 +2325,9 @@ LRESULT CALLBACK OBS::OBSProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
                     break;
 
                 case ID_TOGGLERECORDING:
+                    App->RefreshStreamButtons(true);
                     App->ToggleRecording();
+                    App->RefreshStreamButtons();
                     break;
 
                 case ID_FILE_EXIT:
@@ -2454,14 +2463,16 @@ LRESULT CALLBACK OBS::OBSProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
                     break;
 
                 case ID_TESTSTREAM:
+                    App->RefreshStreamButtons(true);
                     App->bTestStream = true;
                     App->ToggleCapturing();
+                    App->RefreshStreamButtons();
                     break;
 
                 case ID_STARTSTOP:
-                    EnableWindow(GetDlgItem(hwnd, ID_STARTSTOP), false);
+                    App->RefreshStreamButtons(true);
                     App->ToggleCapturing();
-                    EnableWindow(GetDlgItem(hwnd, ID_STARTSTOP), true);
+                    App->RefreshStreamButtons();
                     break;
 
                 case ID_MINIMIZERESTORE:
@@ -2562,6 +2573,9 @@ LRESULT CALLBACK OBS::OBSProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPa
                         if (id >= ID_SWITCHPROFILE && 
                             id <= ID_SWITCHPROFILE+500)
                         {
+                            if (App->bRunning)
+                                break;
+
                             MENUITEMINFO mii;
                             zero(&mii, sizeof(mii));
                             mii.cbSize = sizeof(mii);
